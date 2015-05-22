@@ -18,7 +18,7 @@
 package kafka.api
 
 import kafka.common.Topic
-import org.apache.kafka.common.errors.{InvalidTopicException,NotEnoughReplicasException}
+import org.apache.kafka.common.errors.{InvalidTopicException, NotEnoughReplicasException, NotEnoughReplicasAfterAppendException}
 import org.scalatest.junit.JUnit3Suite
 import org.junit.Test
 import org.junit.Assert._
@@ -53,6 +53,10 @@ class ProducerFailureHandlingTest extends JUnit3Suite with KafkaServerTestHarnes
       // the issue by overriding offsets.topic.replication.factor to 1 for now. When we fix KAFKA-1867, we need to
       // remove the following config override.
       override val offsetsTopicReplicationFactor = 1.asInstanceOf[Short]
+      // Set a smaller value for the number of partitions for the offset commit topic (__consumer_offset topic)
+      // so that the creation of that topic/partition(s) and subsequent leader assignment doesn't take relatively long
+      // @see https://issues.apache.org/jira/browse/KAFKA-1878 for details
+      override val offsetsTopicPartitions = 1
     }
 
 
@@ -351,8 +355,9 @@ class ProducerFailureHandlingTest extends JUnit3Suite with KafkaServerTestHarnes
       fail("Expected exception when producing to topic with fewer brokers than min.insync.replicas")
     } catch {
       case e: ExecutionException =>
-        if (!e.getCause.isInstanceOf[NotEnoughReplicasException]) {
-          fail("Expected NotEnoughReplicasException when producing to topic with fewer brokers than min.insync.replicas")
+        if (!e.getCause.isInstanceOf[NotEnoughReplicasException]  &&
+            !e.getCause.isInstanceOf[NotEnoughReplicasAfterAppendException]) {
+          fail("Expected NotEnoughReplicasException or NotEnoughReplicasAfterAppendException when producing to topic with fewer brokers than min.insync.replicas")
         }
     }
 
